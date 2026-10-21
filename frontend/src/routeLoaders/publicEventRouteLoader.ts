@@ -1,7 +1,9 @@
 import {LoaderFunctionArgs, redirect} from "react-router";
-import {promoCodeClientPublic} from "../api/promo-code.client.ts";
+import {validatePromoCode} from "./validatePromoCode.ts";
 import {getEventPublicQuery} from "../queries/useGetEventPublic.ts";
+import {getEventLineupPublicQuery} from "../queries/useGetEventLineupPublic.ts";
 import {getQueryClient} from "../utilites/ssrQueryClient.ts";
+import {loggableError} from "../ssr/loggableError.js";
 
 export const publicEventRouteLoader = async ({params, request}: LoaderFunctionArgs) => {
     try {
@@ -11,21 +13,19 @@ export const publicEventRouteLoader = async ({params, request}: LoaderFunctionAr
         const occurrenceIdParam = queryParams.get("occurrence_id");
         const occurrenceId = occurrenceIdParam ? Number(occurrenceIdParam) : null;
 
-        let promoCodeValid: boolean | undefined = undefined;
-
-        if (promoCode) {
-            const {valid} = await promoCodeClientPublic.validateCode(params.eventId, promoCode);
-            promoCodeValid = valid;
-        }
+        const promoCodeValid = promoCode ? await validatePromoCode(params.eventId, promoCode) : undefined;
 
         const eventQuery = getEventPublicQuery(
             params.eventId,
-            promoCode,
+            promoCodeValid === undefined ? null : promoCode,
             promoCodeValid ?? false,
             occurrenceId,
         );
 
-        const event = await getQueryClient().fetchQuery(eventQuery);
+        const [event] = await Promise.all([
+            getQueryClient().fetchQuery(eventQuery),
+            getQueryClient().prefetchQuery(getEventLineupPublicQuery(params.eventId)),
+        ]);
 
         if (event && event.slug && params.eventSlug !== event.slug) {
             const searchString = queryParams.toString();
@@ -36,7 +36,6 @@ export const publicEventRouteLoader = async ({params, request}: LoaderFunctionAr
 
         return {event, promoCodeValid, promoCode, occurrenceId};
     } catch (error: any) {
-        // Re-throw redirect responses so React Router can handle them
         if (error instanceof Response) {
             throw error;
         }
@@ -45,7 +44,7 @@ export const publicEventRouteLoader = async ({params, request}: LoaderFunctionAr
             return {event: null, promoCodeValid: undefined, promoCode: null};
         }
 
-        console.error(error);
+        console.error(loggableError(error));
         throw error;
     }
 };

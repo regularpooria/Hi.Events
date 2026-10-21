@@ -4,9 +4,11 @@ namespace HiEvents\Services\Domain\Event;
 
 use Carbon\Carbon;
 use HiEvents\DomainObjects\AffiliateDomainObject;
+use HiEvents\DomainObjects\BoxOfficeDomainObject;
 use HiEvents\DomainObjects\CapacityAssignmentDomainObject;
 use HiEvents\DomainObjects\CheckInListDomainObject;
 use HiEvents\DomainObjects\Enums\EventType;
+use HiEvents\DomainObjects\Enums\FeatureFlag;
 use HiEvents\DomainObjects\Enums\ImageType;
 use HiEvents\DomainObjects\Enums\QuestionBelongsTo;
 use HiEvents\DomainObjects\EventDomainObject;
@@ -25,6 +27,11 @@ use HiEvents\DomainObjects\Status\EventOccurrenceStatus;
 use HiEvents\DomainObjects\Status\EventStatus;
 use HiEvents\DomainObjects\TaxAndFeesDomainObject;
 use HiEvents\DomainObjects\WebhookDomainObject;
+use HiEvents\Enterprise\BoxOffice\Services\Domain\CreateBoxOfficeService;
+use HiEvents\Enterprise\Seating\Services\Domain\EventSeatMapCloneService;
+use HiEvents\Enterprise\Seating\Services\Domain\EventSeatMapLookupService;
+use HiEvents\Exceptions\CannotDuplicateSeatedEventException;
+use HiEvents\Helper\DateHelper;
 use HiEvents\Helper\IdHelper;
 use HiEvents\Helper\StringHelper;
 use HiEvents\Repository\Eloquent\Value\Relationship;
@@ -39,6 +46,8 @@ use HiEvents\Repository\Interfaces\ProductRepositoryInterface;
 use HiEvents\Services\Domain\CapacityAssignment\CreateCapacityAssignmentService;
 use HiEvents\Services\Domain\CheckInList\CreateCheckInListService;
 use HiEvents\Services\Domain\CreateWebhookService;
+use HiEvents\Services\Domain\FeatureFlag\FeatureFlagService;
+use HiEvents\Services\Domain\Lineup\EventLineupCloneService;
 use HiEvents\Services\Domain\Product\CreateProductService;
 use HiEvents\Services\Domain\ProductCategory\CreateProductCategoryService;
 use HiEvents\Services\Domain\PromoCode\CreatePromoCodeService;
@@ -57,6 +66,7 @@ class DuplicateEventService
         private readonly CreatePromoCodeService $createPromoCodeService,
         private readonly CreateCapacityAssignmentService $createCapacityAssignmentService,
         private readonly CreateCheckInListService $createCheckInListService,
+        private readonly CreateBoxOfficeService $createBoxOfficeService,
         private readonly ImageRepositoryInterface $imageRepository,
         private readonly DatabaseManager $databaseManager,
         private readonly HtmlPurifierService $purifier,
@@ -68,9 +78,15 @@ class DuplicateEventService
         private readonly ProductOccurrenceVisibilityRepositoryInterface $visibilityRepository,
         private readonly EventLocationRepositoryInterface $eventLocationRepository,
         private readonly ProductRepositoryInterface $productRepository,
+        private readonly EventSeatMapCloneService $eventSeatMapCloneService,
+        private readonly EventSeatMapLookupService $eventSeatMapLookupService,
+        private readonly FeatureFlagService $featureFlagService,
+        private readonly EventLineupCloneService $eventLineupCloneService,
+        private readonly HomepageSectionImageCloneService $homepageSectionImageCloneService,
     ) {}
 
     /**
+     * @throws CannotDuplicateSeatedEventException
      * @throws Throwable
      */
     public function duplicateEvent(
@@ -89,9 +105,18 @@ class DuplicateEventService
         bool $duplicateWebhooks = true,
         bool $duplicateAffiliates = true,
         bool $duplicateOccurrences = true,
+        bool $duplicateLineup = true,
         ?string $description = null,
         ?string $endDate = null,
     ): EventDomainObject {
+        if ($duplicateProducts
+            && $this->eventSeatMapLookupService->existsForEvent((int) $eventId)
+            && ! $this->featureFlagService->isEnabled(FeatureFlag::SEATING, (int) $accountId)) {
+            throw new CannotDuplicateSeatedEventException(
+                __('This event uses a seat map, but reserved seating is not available on your account. Duplicate it without products, or enable reserved seating first.')
+            );
+        }
+
         try {
             $this->databaseManager->beginTransaction();
 
@@ -143,6 +168,10 @@ class DuplicateEventService
                 $this->cloneOccurrenceProductSettings($oldToNewOccurrenceMap, $oldProductToNewProductMap, $oldPriceToNewPriceMap);
             }
 
+            if ($duplicateProducts) {
+                $this->eventSeatMapCloneService->clone($event->getId(), $newEvent->getId(), $oldProductToNewProductMap);
+            }
+
             if ($duplicateEventCoverImage) {
                 $this->cloneEventCoverImage($event, $newEvent->getId());
             }
@@ -151,12 +180,24 @@ class DuplicateEventService
                 $this->cloneTicketLogo($event, $newEvent->getId());
             }
 
+            if ($duplicateSettings) {
+                $this->homepageSectionImageCloneService->clone($event, $newEvent->getId());
+            }
+
             if ($duplicateWebhooks) {
                 $this->duplicateWebhooks($event, $newEvent);
             }
 
             if ($duplicateAffiliates) {
                 $this->duplicateAffiliates($event, $newEvent);
+            }
+
+            if ($duplicateLineup) {
+                $this->eventLineupCloneService->clone(
+                    sourceEventId: $event->getId(),
+                    newEventId: $newEvent->getId(),
+                    shiftToNewStartDate: $event->getType() !== EventType::RECURRING->name,
+                );
             }
 
             $this->databaseManager->commit();
@@ -292,7 +333,8 @@ class DuplicateEventService
         }
 
         if ($duplicateCheckInLists) {
-            $this->cloneCheckInLists($event, $newEventId, $oldProductToNewProductMap, $oldToNewOccurrenceMap);
+            $oldToNewCheckInListMap = $this->cloneCheckInLists($event, $newEventId, $oldProductToNewProductMap, $oldToNewOccurrenceMap);
+            $this->cloneBoxOffices($event, $newEventId, $oldProductToNewProductMap, $oldToNewOccurrenceMap, $oldToNewCheckInListMap);
         }
 
         return [$oldProductToNewProductMap, $oldPriceToNewPriceMap];
@@ -414,12 +456,17 @@ class DuplicateEventService
         }
     }
 
+    /**
+     * @return array<int, int>
+     */
     private function cloneCheckInLists(
         EventDomainObject $event,
         int $newEventId,
         array $oldProductToNewProductMap,
         array $oldToNewOccurrenceMap = [],
-    ): void {
+    ): array {
+        $oldToNewCheckInListMap = [];
+
         foreach ($event->getCheckInLists() as $checkInList) {
             if ($checkInList->getIsSystemDefault()) {
                 continue;
@@ -430,12 +477,12 @@ class DuplicateEventService
                 ? ($oldToNewOccurrenceMap[$sourceOccurrenceId] ?? null)
                 : null;
 
-            $this->createCheckInListService->createCheckInList(
+            $newCheckInList = $this->createCheckInListService->createCheckInList(
                 checkInList: (new CheckInListDomainObject)
                     ->setName($checkInList->getName())
                     ->setDescription($checkInList->getDescription())
-                    ->setExpiresAt($checkInList->getExpiresAt())
-                    ->setActivatesAt($checkInList->getActivatesAt())
+                    ->setExpiresAt($this->toEventTimezone($checkInList->getExpiresAt(), $event))
+                    ->setActivatesAt($this->toEventTimezone($checkInList->getActivatesAt(), $event))
                     ->setEventOccurrenceId($newOccurrenceId)
                     ->setPublicShowAttendeeNotes($checkInList->getPublicShowAttendeeNotes())
                     ->setPublicShowQuestionAnswers($checkInList->getPublicShowQuestionAnswers())
@@ -444,7 +491,58 @@ class DuplicateEventService
                 productIds: $checkInList->getProducts()
                     ?->map(fn ($product) => $oldProductToNewProductMap[$product->getId()])?->toArray() ?? [],
             );
+
+            $oldToNewCheckInListMap[$checkInList->getId()] = $newCheckInList->getId();
         }
+
+        return $oldToNewCheckInListMap;
+    }
+
+    private function cloneBoxOffices(
+        EventDomainObject $event,
+        int $newEventId,
+        array $oldProductToNewProductMap,
+        array $oldToNewOccurrenceMap = [],
+        array $oldToNewCheckInListMap = [],
+    ): void {
+        foreach ($event->getBoxOffices() ?? [] as $boxOffice) {
+            if ($boxOffice->getIsSystemDefault()) {
+                continue;
+            }
+
+            $sourceOccurrenceId = $boxOffice->getEventOccurrenceId();
+            $newOccurrenceId = $sourceOccurrenceId !== null
+                ? ($oldToNewOccurrenceMap[$sourceOccurrenceId] ?? null)
+                : null;
+
+            $sourceCheckInListId = $boxOffice->getCheckInListId();
+            $newCheckInListId = $sourceCheckInListId !== null
+                ? ($oldToNewCheckInListMap[$sourceCheckInListId] ?? null)
+                : null;
+
+            $this->createBoxOfficeService->createBoxOffice(
+                boxOffice: (new BoxOfficeDomainObject)
+                    ->setName($boxOffice->getName())
+                    ->setDescription($boxOffice->getDescription())
+                    ->setExpiresAt($this->toEventTimezone($boxOffice->getExpiresAt(), $event))
+                    ->setActivatesAt($this->toEventTimezone($boxOffice->getActivatesAt(), $event))
+                    ->setEventOccurrenceId($newOccurrenceId)
+                    ->setCheckInListId($newCheckInListId)
+                    ->setPinHash($boxOffice->getPinHash())
+                    ->setAllowPriceOverride($boxOffice->getAllowPriceOverride())
+                    ->setAllowDiscounts($boxOffice->getAllowDiscounts())
+                    ->setCollectOrderQuestions($boxOffice->getCollectOrderQuestions())
+                    ->setEventId($newEventId),
+                productIds: $boxOffice->getProducts()
+                    ?->map(fn ($product) => $oldProductToNewProductMap[$product->getId()])?->toArray() ?? [],
+                pin: null,
+            );
+        }
+    }
+
+    private function toEventTimezone(?string $utcDate, EventDomainObject $event): ?string
+    {
+        return $utcDate === null ? null : DateHelper::convertFromUTC($utcDate, $event->getTimezone());
     }
 
     private function cloneEventCoverImage(EventDomainObject $event, int $newEventId): void
@@ -508,6 +606,9 @@ class DuplicateEventService
                 new Relationship(ProductDomainObject::class),
             ]))
             ->loadRelation(new Relationship(CheckInListDomainObject::class, [
+                new Relationship(ProductDomainObject::class),
+            ]))
+            ->loadRelation(new Relationship(BoxOfficeDomainObject::class, [
                 new Relationship(ProductDomainObject::class),
             ]))
             ->loadRelation(ImageDomainObject::class)

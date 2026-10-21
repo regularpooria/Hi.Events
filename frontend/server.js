@@ -3,6 +3,7 @@ import {installGlobals} from "@remix-run/node";
 import process from "process";
 import compression from "compression";
 import fs from "node:fs/promises";
+import {createHash} from "node:crypto";
 import sirv from "sirv";
 import cookieParser from "cookie-parser";
 import path from "node:path";
@@ -11,8 +12,11 @@ import * as nodePath from "node:path";
 import * as nodeUrl from "node:url";
 import "dotenv/config";
 import * as Sentry from "@sentry/node";
+import {complianceHandler} from "./src/compliance/proxy.js";
 import {sitemapIndexHandler, sitemapEventsHandler, sitemapOrganizersHandler} from "./src/sitemap/proxy.js";
 import {htmlSafeJsonStringify} from "./src/utilites/safeScriptJson.js";
+import {backendRequestHeaders, licenceSimulation} from "./src/ssr/backendRequestHeaders.js";
+import {loggableError} from "./src/ssr/loggableError.js";
 
 installGlobals();
 
@@ -38,15 +42,32 @@ async function main() {
 
     app.use('/.well-known', express.static(path.join(__dirname, 'public/.well-known')));
 
-    app.get('/widget.js', async (req, res) => {
+    const widgetPath = isProduction
+        ? path.join(__dirname, './dist/client/widget.js')
+        : path.join(__dirname, './public/widget.js');
+    const loadWidgetScript = async () => {
+        const body = await fs.readFile(widgetPath, 'utf-8');
+        return {body, etag: `"${createHash('sha1').update(body).digest('base64url')}"`};
+    };
+    const productionWidgetScript = isProduction ? loadWidgetScript().catch(() => null) : null;
+
+    app.get('/widget.js', compression(), async (req, res) => {
         try {
-            const widgetPath = isProduction
-                ? path.join(__dirname, './dist/client/widget.js')
-                : path.join(__dirname, './public/widget.js');
-            const widgetJs = await fs.readFile(widgetPath, 'utf-8');
+            const script = isProduction ? await productionWidgetScript : await loadWidgetScript();
+            if (!script) {
+                return res.status(404).send('');
+            }
             res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-            res.setHeader('Cache-Control', 'no-cache');
-            return res.status(200).send(widgetJs);
+            res.setHeader('Cache-Control', isProduction
+                ? 'public, max-age=300, stale-while-revalidate=86400'
+                : 'no-cache');
+            res.setHeader('ETag', script.etag);
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+            if (req.fresh) {
+                return res.status(304).end();
+            }
+            return res.status(200).send(script.body);
         } catch (error) {
             return res.status(404).send('');
         }
@@ -117,6 +138,8 @@ Sitemap: ${frontendUrl}/sitemap.xml
         res.status(200).send(robotsTxt);
     });
 
+    app.get('/compliance', complianceHandler);
+
     app.get('/sitemap.xml', sitemapIndexHandler);
     app.get('/sitemap-events-:page.xml', sitemapEventsHandler);
     app.get('/sitemap-organizers-:page.xml', sitemapOrganizersHandler);
@@ -126,6 +149,40 @@ Sitemap: ${frontendUrl}/sitemap.xml
     app.use("*", async (req, res, next) => {
         if (nonRenderablePathPattern.test(req.originalUrl.split("?")[0])) {
             return res.status(404).type("text/plain").send("Not Found");
+        }
+
+        return next();
+    });
+
+    const frameProtectedPathPattern = /^\/(auth|manage|account|profile|settings|welcome|admin|sso)(\/|$)/;
+    const homepagePreviewPathPattern = /^\/(event|organizer)\/[^/]+\/preview\/*$/;
+    const widgetPathPattern = /^\/widget\//;
+    const credentialInUrlPathPattern = /^\/(sso\/callback|auth\/accept-invitation\/)/;
+    const ssoCallbackPathPattern = /^\/sso\/callback\/?$/;
+    const requestPathOf = (req) => {
+        const path = req.originalUrl.replace(base, "/").split("?")[0];
+        try {
+            return decodeURIComponent(path).toLowerCase();
+        } catch {
+            return path.toLowerCase();
+        }
+    };
+
+    app.use("*", (req, res, next) => {
+        const requestPath = requestPathOf(req);
+
+        if (frameProtectedPathPattern.test(requestPath) || homepagePreviewPathPattern.test(requestPath)) {
+            res.setHeader("Content-Security-Policy", "frame-ancestors 'self'");
+            res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        }
+
+        if (widgetPathPattern.test(requestPath)) {
+            res.setHeader("X-Robots-Tag", "noindex, indexifembedded");
+        }
+
+        if (credentialInUrlPathPattern.test(requestPath)) {
+            res.setHeader("Referrer-Policy", "no-referrer");
+            res.setHeader("Cache-Control", "no-store");
         }
 
         return next();
@@ -147,8 +204,13 @@ Sitemap: ${frontendUrl}/sitemap.xml
                 render = (await dynamicImport(path.join(__dirname, "./dist/server/entry.server.js"))).render;
             }
 
-            const { appHtml, dehydratedState, helmetContext, themeColors, statusCode, renderErrors } = await render(
-                { req, res },
+            const { appHtml, dehydratedState, helmetContext, themeColors, htmlLang, statusCode, renderErrors } = await render(
+                {
+                    req,
+                    res,
+                    backendHeaders: backendRequestHeaders(req),
+                    licenceSimulation: licenceSimulation(req),
+                },
                 ssrManifest
             );
 
@@ -170,23 +232,25 @@ Sitemap: ${frontendUrl}/sitemap.xml
             const envVariablesHtml = `<script>window.hievents = ${getViteEnvironmentVariables()};</script>`;
 
             const headSnippets = [];
-            if (process.env.VITE_COOKIE_CONSENT_ENABLED === 'true') {
+            const isSsoCallback = ssoCallbackPathPattern.test(requestPathOf(req));
+            if (process.env.VITE_COOKIE_CONSENT_ENABLED === 'true' && !isSsoCallback) {
                 headSnippets.push(`<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{${googleConsentDefaults(req.cookies?.hi_cookie_consent)}});</script>`);
             }
-            if (process.env.VITE_GOOGLE_ADS_CONVERSION_ID) {
+            if (process.env.VITE_GOOGLE_ADS_CONVERSION_ID && !isSsoCallback) {
                 const conversionId = encodeURIComponent(process.env.VITE_GOOGLE_ADS_CONVERSION_ID);
                 headSnippets.push(`
                 <script async src="https://www.googletagmanager.com/gtag/js?id=${conversionId}"></script>
                 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${conversionId}');</script>
             `);
             }
-            if (process.env.VITE_FATHOM_SITE_ID) {
+            if (process.env.VITE_FATHOM_SITE_ID && !isSsoCallback) {
                 headSnippets.push(`
                 <script src="https://cdn.usefathom.com/script.js" data-spa="auto" data-site="${encodeURIComponent(process.env.VITE_FATHOM_SITE_ID)}" defer></script>
             `);
             }
 
             const html = template
+                .replace('<html lang="en">', () => `<html lang="${htmlLang}">`)
                 .replace("<!--head-snippets-->", () => headSnippets.join("\n"))
                 .replace("<!--app-html-->", () => appHtml)
                 .replace("<!--dehydrated-state-->", () => `<script>window.__REHYDRATED_STATE__ = ${stringifiedState};window.__THEME_COLORS__ = ${stringifiedThemeColors}</script>`)
@@ -208,7 +272,7 @@ Sitemap: ${frontendUrl}/sitemap.xml
                 tags: { source: "ssr-render" },
                 extra: { url: req.originalUrl },
             });
-            console.error(error);
+            console.error(loggableError(error));
             res.status(500).send("Internal Server Error");
         }
     });
@@ -216,7 +280,7 @@ Sitemap: ${frontendUrl}/sitemap.xml
     Sentry.setupExpressErrorHandler(app);
 
     app.use((error, req, res, _next) => {
-        console.error(error);
+        console.error(loggableError(error));
 
         if (res.headersSent) {
             return res.end();

@@ -13,6 +13,7 @@ use HiEvents\DomainObjects\ProductDomainObject;
 use HiEvents\DomainObjects\PromoCodeDomainObject;
 use HiEvents\DomainObjects\Status\EventLifecycleStatus;
 use HiEvents\DomainObjects\Status\EventOccurrenceStatus;
+use HiEvents\Enterprise\Seating\Services\Domain\EventSeatMapLookupService;
 use HiEvents\Repository\Eloquent\Value\OrderAndDirection;
 use HiEvents\Repository\Interfaces\EventOccurrenceRepositoryInterface;
 use HiEvents\Repository\Interfaces\EventRepositoryInterface;
@@ -22,6 +23,7 @@ use HiEvents\Services\Application\Handlers\Event\GetPublicEventHandler;
 use HiEvents\Services\Domain\Event\EventPageViewIncrementService;
 use HiEvents\Services\Domain\EventOccurrence\PublicOccurrenceVisibilityService;
 use HiEvents\Services\Domain\Product\ProductFilterService;
+use HiEvents\Services\Domain\Product\PublicProductSelectionFilter;
 use Illuminate\Support\Collection;
 use Mockery as m;
 use Tests\TestCase;
@@ -57,6 +59,8 @@ class GetPublicEventHandlerTest extends TestCase
             $this->ticketFilterService,
             $this->eventPageViewIncrementService,
             new PublicOccurrenceVisibilityService,
+            m::mock(EventSeatMapLookupService::class, ['existsForEvent' => false]),
+            new PublicProductSelectionFilter,
         );
     }
 
