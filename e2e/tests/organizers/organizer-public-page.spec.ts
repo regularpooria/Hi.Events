@@ -33,13 +33,15 @@ test.describe('organizer public page', () => {
     });
     const [next] = [...event.occurrences].sort((a, b) => a.start_date.localeCompare(b.start_date));
     const nextDate = new Date(next.start_date);
-    const nextLabel = `${nextDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${nextDate.getUTCDate()}`;
+    const nextMonth = nextDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    const nextWeekday = nextDate.toLocaleString('en-US', { weekday: 'short', timeZone: 'UTC' });
 
     const publicPage = new OrganizerPublicPage(page);
     await publicPage.goto(organizer.id, organizer.slug);
 
     const card = publicPage.eventLink(event.title);
-    await expect(card.getByTestId('organizer-event-card-date')).toContainText(nextLabel);
+    await expect(card).toContainText(new RegExp(`${nextMonth}\\s*${nextDate.getUTCDate()}(?!\\d)`));
+    await expect(card.getByTestId('organizer-event-card-date')).toContainText(nextWeekday);
     await expect(card.getByTestId('organizer-event-card-date')).toContainText(/7:00\s?PM/);
     await expect(card.getByText('+2 more dates')).toBeVisible();
     await expect(card.getByText('Happening now')).toHaveCount(0);
@@ -91,5 +93,21 @@ test.describe('organizer public page', () => {
     expect(summary.Subject).toBe('New message from your organizer page');
     const message = await mailpit.getMessage(summary.ID);
     expect(`${message.Text}\n${message.HTML}`).toContain(reference);
+  });
+
+  test('organizer social handles cannot break out of the structured data script', async ({ page, api }) => {
+    const organizer = await createFreshOrganizer(api, uniqueName('E2E Script Org'));
+    await api.updateOrganizerSettings(organizer.id, {
+      facebook_handle: 'x</script><script>window.__organizerInjected=true</script>',
+    });
+    await api.updateOrganizerStatus(organizer.id, 'LIVE');
+
+    const response = await page.request.get(`/events/${organizer.id}/${organizer.slug}`);
+    expect(await response.text()).not.toContain('<script>window.__organizerInjected');
+
+    const publicPage = new OrganizerPublicPage(page);
+    await publicPage.goto(organizer.id, organizer.slug);
+    await expect(page.getByRole('heading', { name: organizer.name })).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { __organizerInjected?: boolean }).__organizerInjected)).toBeUndefined();
   });
 });

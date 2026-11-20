@@ -5,6 +5,7 @@ namespace HiEvents\Http\Request\EventSettings;
 use HiEvents\DomainObjects\Enums\AttendeeDetailsCollectionMethod;
 use HiEvents\DomainObjects\Enums\HomepageBackgroundType;
 use HiEvents\DomainObjects\Enums\HomepageFontFamily;
+use HiEvents\DomainObjects\Enums\HomepageLayout;
 use HiEvents\DomainObjects\Enums\HomepageSectionType;
 use HiEvents\DomainObjects\Enums\PaymentProviders;
 use HiEvents\DomainObjects\Enums\Permission;
@@ -76,6 +77,10 @@ class UpdateEventSettingsRequest extends BaseRequest
             'payment_providers.*' => ['string', Rule::in(PaymentProviders::valuesArray())],
             'offline_payment_instructions' => ['string', 'nullable', Rule::requiredIf(fn () => in_array(PaymentProviders::OFFLINE->name, $this->input('payment_providers', []), true))],
             'allow_orders_awaiting_offline_payment_to_check_in' => ['boolean'],
+            'offline_payment_reporting_enabled' => ['boolean'],
+            'offline_payment_order_reference_enabled' => ['boolean'],
+            'payment_links_enabled' => ['boolean'],
+            'payment_link_expiry_hours' => ['integer', 'min:1', 'max:720'],
 
             // Invoice settings
             'enable_invoicing' => ['boolean'],
@@ -114,6 +119,7 @@ class UpdateEventSettingsRequest extends BaseRequest
             'homepage_theme_settings.mode' => ['nullable', 'string', Rule::in(['light', 'dark'])],
             'homepage_theme_settings.background_type' => ['nullable', 'string', Rule::in(HomepageBackgroundType::valuesArray())],
             'homepage_theme_settings.font_family' => ['nullable', 'string', Rule::in(HomepageFontFamily::valuesArray())],
+            'homepage_theme_settings.layout' => ['nullable', 'string', Rule::in(HomepageLayout::valuesArray())],
             ...HomepageSectionRules::rules(HomepageSectionType::eventValues()),
 
             // Self-service settings
@@ -164,6 +170,7 @@ class UpdateEventSettingsRequest extends BaseRequest
             'homepage_theme_settings.mode.in' => __('The mode must be light or dark.'),
             'homepage_theme_settings.background_type.in' => __('The background type must be COLOR or MIRROR_COVER_IMAGE.'),
             'homepage_theme_settings.font_family.in' => __('The selected font is not supported.'),
+            'homepage_theme_settings.layout.in' => __('The selected layout is not supported.'),
             ...HomepageSectionRules::messages(),
         ];
     }

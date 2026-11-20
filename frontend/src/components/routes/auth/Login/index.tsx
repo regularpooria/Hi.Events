@@ -56,8 +56,14 @@ const Login = () => {
             }, {onError: () => setSsoDiscoveryEmail('')});
         }
 
-        if (takeAuthNotice() === 'SSO_REQUIRED') {
+        const authNotice = takeAuthNotice();
+
+        if (authNotice === 'SSO_REQUIRED') {
             setSsoRequiredEmail('');
+        }
+
+        if (authNotice === 'ACCOUNT_SUSPENDED') {
+            steps.setError(t`This account has been suspended. Contact support if you think this is a mistake.`);
         }
 
         const params = new URLSearchParams(location.search);
@@ -83,6 +89,16 @@ const Login = () => {
             if (error?.response?.data?.error_code === 'SSO_REQUIRED') {
                 steps.reset();
                 setSsoRequiredEmail(variables.email);
+                return;
+            }
+
+            if (error?.response?.data?.error_code === 'ACCOUNT_SUSPENDED') {
+                steps.setError(t`This account has been suspended. Contact support if you think this is a mistake.`);
+                return;
+            }
+
+            if (error?.response?.data?.error_code === 'INVITATION_PENDING') {
+                steps.setError(t`You've been invited to join a team. Open the invitation email we sent you to finish joining. If the link has expired, ask the person who invited you to send a new one.`);
                 return;
             }
 

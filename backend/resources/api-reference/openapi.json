@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hi.Events",
-    "description": "The Hi.Events API powers event management, ticketing, and checkout.\n\n## Authentication\n\nManagement endpoints require a bearer token in the `Authorization` header. Endpoints under `/public/*` — event pages, checkout, ticket lookup, check-in — require no authentication and are marked *(public)*.\n\n### API keys\n\nFor integrations, create an API key under **Settings → API keys** and send it with every request:\n\n```bash\ncurl https://your-hi-events-host/api/events \\\n  -H \"Authorization: Bearer hie_…\" \\\n  -H \"Accept: application/json\"\n```\n\n- A key acts as the person who created it, in the one account it was created in, with that person's role, permissions and event access. It never has more access than its owner, and changes to the owner's role apply straight away.\n- **Read and write** keys can call every endpoint the owner can. **Read-only** keys can call `GET` endpoints and exports; other requests return `403` with `error_code: API_KEY_READ_ONLY`.\n- Keys can't sign in, or manage the user's profile, sign-in security, team, API keys, payouts or account settings. Those endpoints return `403` with `error_code: API_KEY_NOT_ALLOWED`.\n- An expired, revoked or unknown key returns `401`. A key is revoked when its owner revokes it, when an admin revokes it, when the owner is deactivated or leaves the account, and when the owner's password is reset or their single sign-on changes.\n- The full key is shown once, when it's created. Hi.Events stores only a hash of it.\n\n### Session tokens\n\nThe Hi.Events web app uses a JWT obtained from `POST /auth/login`. It works on every management endpoint, including the ones API keys can't use.\n\n### Two-factor authentication\n\nWhen the user has two-factor authentication turned on, `POST /auth/login` returns `200` with `token: null`, `two_factor_required: true` and a `two_factor_challenge_token` that is valid for 10 minutes. Complete the login with `POST /auth/login/two-factor`, sending the challenge token plus either a 6-digit `code` from the user's authenticator app or a `recovery_code`. A wrong code returns `422`; an expired challenge, or too many wrong codes, returns `401` with `error_code: TWO_FACTOR_CHALLENGE_EXPIRED` and the login must start again. Users with several accounts verify once, then call `POST /auth/login/two-factor` again with the same challenge token and an `account_id`.\n\nTokens work the same once issued: two-factor authentication is only checked at login.\n\nIf an account requires two-factor authentication and the user has not set it up, authenticated endpoints return `403` with `error_code: TWO_FACTOR_SETUP_REQUIRED` until they do. `GET /users/me`, `GET /accounts`, the `/auth/*` endpoints and the `/users/me/two-factor/*` setup endpoints stay available.\n\n## Errors\n\nErrors return JSON with a `message`. Validation errors (`422`) also include an `errors` object keyed by field. Access errors include an `error_code`:\n\n| Status | `error_code` | Meaning |\n| --- | --- | --- |\n| `401` | — | Missing, invalid or expired token, or an invalid, expired or revoked API key |\n| `401` | `SESSION_REVOKED` | The session token was signed out everywhere, for example after a password reset |\n| `401` | `SSO_REQUIRED` | The user's organization requires single sign-on; sign in again through it |\n| `401` | `SSO_SESSION_EXPIRED` | A session started through single sign-on can't be refreshed; sign in again |\n| `403` | `API_KEY_READ_ONLY` | A read-only API key tried to make a change |\n| `403` | `API_KEY_NOT_ALLOWED` | The endpoint can't be used with an API key |\n| `403` | `READ_ONLY_ROLE` | The user has view-only access to the account |\n| `403` | `PERMISSION_REQUIRED` | The user's role lacks a permission the endpoint needs (for example refunds or financial data) |\n| `403` | `ACCESS_RESTRICTED` | The user only has access to some organizers or events, and this isn't one of them |\n| `403` | `TWO_FACTOR_SETUP_REQUIRED` | The account requires two-factor authentication and the user hasn't set it up |\n| `403` | `ACCOUNT_PENDING_DELETION` | The account is scheduled for deletion |\n| `403` | `FEATURE_UNAVAILABLE` | The feature isn't available on this installation or plan |\n| `429` | — | Too many requests; wait for the number of seconds in the `Retry-After` header |\n\n## Rate limits\n\nManagement endpoints are rate limited per user, shared between the web app and all of that user's API keys. The default is 180 requests a minute; self-hosted installations can change it with `APP_API_RATE_LIMIT_PER_MINUTE`.\n\n## Stability\n\nThe API isn't versioned yet. Endpoints that accept API keys are the integration surface, and we keep them backward compatible: new endpoints, optional request fields and response fields can be added at any time, so ignore fields you don't recognise. Removing or renaming an endpoint or field, or changing its type or meaning, is a breaking change; it's avoided where possible and always called out in the release notes. Endpoints marked *Not available to API keys* serve the Hi.Events web app and may change without notice.\n\n## Outgoing webhooks\n\nWebhooks are configured per event or organizer (see the *Webhooks* endpoints) and deliver a `POST` request to your URL for each subscribed event:\n\n```json\n{\n    \"event_type\": \"order.created\",\n    \"event_sent_at\": \"2026-08-07T10:00:00+00:00\",\n    \"payload\": { }\n}\n```\n\n`payload` matches the schema of the corresponding resource (see the *Schemas* section):\n\n| Events | Payload schema |\n| --- | --- |\n| `order.created`, `order.updated`, `order.marked_as_paid`, `order.refunded`, `order.cancelled` | `OrderResource` |\n| `attendee.created`, `attendee.updated`, `attendee.cancelled` | `AttendeeResource` |\n| `product.created`, `product.updated`, `product.deleted` | `ProductResource` |\n| `event.created`, `event.updated`, `event.archived` | `EventResource` |\n| `checkin.created`, `checkin.deleted` | `AttendeeCheckInResource` |\n| `occurrence.cancelled` | `EventOccurrenceResource` |\n\n`email` on an order payload is `null` for box office sales made without a buyer email. `order.created` and `order.cancelled` additionally emit an `attendee.created` / `attendee.cancelled` webhook for each attendee on the order. Deliveries are signed: the `Signature` header contains an HMAC-SHA256 hash of the JSON body using your webhook's secret."
+    "description": "The Hi.Events API powers event management, ticketing, and checkout.\n\n## Authentication\n\nManagement endpoints require a bearer token in the `Authorization` header. Endpoints under `/public/*` — event pages, checkout, ticket lookup, check-in — require no authentication and are marked *(public)*.\n\n### API keys\n\nFor integrations, create an API key under **Settings → API keys** and send it with every request:\n\n```bash\ncurl https://your-hi-events-host/api/events \\\n  -H \"Authorization: Bearer hie_…\" \\\n  -H \"Accept: application/json\"\n```\n\n- A key acts as the person who created it, in the one account it was created in, with that person's role, permissions and event access. It never has more access than its owner, and changes to the owner's role apply straight away.\n- **Read and write** keys can call every endpoint the owner can. **Read-only** keys can call `GET` endpoints and exports; other requests return `403` with `error_code: API_KEY_READ_ONLY`.\n- Keys can't sign in, or manage the user's profile, sign-in security, team, API keys, payouts or account settings. Those endpoints return `403` with `error_code: API_KEY_NOT_ALLOWED`.\n- An expired, revoked or unknown key returns `401`. A key is revoked when its owner revokes it, when an admin revokes it, when the owner is deactivated or leaves the account, and when the owner's password is reset or their single sign-on changes.\n- The full key is shown once, when it's created. Hi.Events stores only a hash of it.\n\n### Session tokens\n\nThe Hi.Events web app uses a JWT obtained from `POST /auth/login`. It works on every management endpoint, including the ones API keys can't use.\n\n### Two-factor authentication\n\nWhen the user has two-factor authentication turned on, `POST /auth/login` returns `200` with `token: null`, `two_factor_required: true` and a `two_factor_challenge_token` that is valid for 10 minutes. Complete the login with `POST /auth/login/two-factor`, sending the challenge token plus either a 6-digit `code` from the user's authenticator app or a `recovery_code`. A wrong code returns `422`; an expired challenge, or too many wrong codes, returns `401` with `error_code: TWO_FACTOR_CHALLENGE_EXPIRED` and the login must start again. Users with several accounts verify once, then call `POST /auth/login/two-factor` again with the same challenge token and an `account_id`.\n\nTokens work the same once issued: two-factor authentication is only checked at login.\n\nIf an account requires two-factor authentication and the user has not set it up, authenticated endpoints return `403` with `error_code: TWO_FACTOR_SETUP_REQUIRED` until they do. `GET /users/me`, `GET /accounts`, the `/auth/*` endpoints and the `/users/me/two-factor/*` setup endpoints stay available.\n\n## Errors\n\nErrors return JSON with a `message`. Validation errors (`422`) also include an `errors` object keyed by field. Access errors include an `error_code`:\n\n| Status | `error_code` | Meaning |\n| --- | --- | --- |\n| `401` | — | Missing, invalid or expired token, or an invalid, expired or revoked API key |\n| `401` | `SESSION_REVOKED` | The session token was signed out everywhere, for example after a password reset |\n| `401` | `SSO_REQUIRED` | The user's organization requires single sign-on; sign in again through it |\n| `401` | `SSO_SESSION_EXPIRED` | A session started through single sign-on can't be refreshed; sign in again |\n| `401` | `INVITATION_PENDING` | `POST /auth/login` only: the user's only membership is an invitation they haven't accepted; they must open the invitation email |\n| `403` | `API_KEY_READ_ONLY` | A read-only API key tried to make a change |\n| `403` | `API_KEY_NOT_ALLOWED` | The endpoint can't be used with an API key |\n| `403` | `READ_ONLY_ROLE` | The user has view-only access to the account |\n| `403` | `PERMISSION_REQUIRED` | The user's role lacks a permission the endpoint needs (for example refunds or financial data) |\n| `403` | `ACCESS_RESTRICTED` | The user only has access to some organizers or events, and this isn't one of them |\n| `403` | `TWO_FACTOR_SETUP_REQUIRED` | The account requires two-factor authentication and the user hasn't set it up |\n| `403` | `ACCOUNT_PENDING_DELETION` | The account is scheduled for deletion |\n| `403` | `FEATURE_UNAVAILABLE` | The feature isn't available on this installation or plan |\n| `429` | — | Too many requests; wait for the number of seconds in the `Retry-After` header |\n\n## Rate limits\n\nManagement endpoints are rate limited per user, shared between the web app and all of that user's API keys. The default is 180 requests a minute; self-hosted installations can change it with `APP_API_RATE_LIMIT_PER_MINUTE`.\n\n## Stability\n\nThe API isn't versioned yet. Endpoints that accept API keys are the integration surface, and we keep them backward compatible: new endpoints, optional request fields and response fields can be added at any time, so ignore fields you don't recognise. Removing or renaming an endpoint or field, or changing its type or meaning, is a breaking change; it's avoided where possible and always called out in the release notes. Endpoints marked *Not available to API keys* serve the Hi.Events web app and may change without notice.\n\n## Outgoing webhooks\n\nWebhooks are configured per event or organizer (see the *Webhooks* endpoints) and deliver a `POST` request to your URL for each subscribed event:\n\n```json\n{\n    \"event_type\": \"order.created\",\n    \"event_sent_at\": \"2026-08-07T10:00:00+00:00\",\n    \"payload\": { }\n}\n```\n\n`payload` matches the schema of the corresponding resource (see the *Schemas* section):\n\n| Events | Payload schema |\n| --- | --- |\n| `order.created`, `order.updated`, `order.marked_as_paid`, `order.refunded`, `order.cancelled` | `OrderResource` |\n| `attendee.created`, `attendee.updated`, `attendee.cancelled` | `AttendeeResource` |\n| `product.created`, `product.updated`, `product.deleted` | `ProductResource` |\n| `event.created`, `event.updated`, `event.archived` | `EventResource` |\n| `checkin.created`, `checkin.deleted` | `AttendeeCheckInResource` |\n| `occurrence.cancelled` | `EventOccurrenceResource` |\n\n`email` on an order payload is `null` for box office sales made without a buyer email. `order.created` and `order.cancelled` additionally emit an `attendee.created` / `attendee.cancelled` webhook for each attendee on the order. Deliveries are signed: the `Signature` header contains an HMAC-SHA256 hash of the JSON body using your webhook's secret."
   },
   "security": [
     {
@@ -4775,6 +4775,9 @@
                             "is_offline_payment": {
                               "type": "boolean"
                             },
+                            "payment_reference": {
+                              "type": "string"
+                            },
                             "seats": {
                               "type": "string",
                               "const": "Stalls · C-14, Stalls · C-15"
@@ -4797,6 +4800,7 @@
                             "email",
                             "is_awaiting_offline_payment",
                             "is_offline_payment",
+                            "payment_reference",
                             "seats",
                             "locale",
                             "currency"
@@ -5870,6 +5874,9 @@
                             "is_offline_payment": {
                               "type": "boolean"
                             },
+                            "payment_reference": {
+                              "type": "string"
+                            },
                             "seats": {
                               "type": "string",
                               "const": "Stalls · C-14, Stalls · C-15"
@@ -5892,6 +5899,7 @@
                             "email",
                             "is_awaiting_offline_payment",
                             "is_offline_payment",
+                            "payment_reference",
                             "seats",
                             "locale",
                             "currency"
@@ -8987,6 +8995,97 @@
         }
       }
     },
+    "/events/{eventId}/type": {
+      "put": {
+        "operationId": "events.updateEventTypeAction",
+        "summary": "Update Event Type",
+        "tags": [
+          "Events"
+        ],
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEventTypeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "`EventResource`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResource"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          },
+          "403": {
+            "description": "The authenticated user is not allowed to perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/events/{eventId}/deletion-status": {
       "get": {
         "operationId": "events.getEventDeletionStatusAction",
@@ -9805,7 +9904,10 @@
             "name": "occurrence_id",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           },
           {
@@ -12154,7 +12256,7 @@
             }
           },
           "429": {
-            "description": "",
+            "description": "Too many requests. Retry once the rate limit window resets.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12317,7 +12419,7 @@
             }
           },
           "429": {
-            "description": "",
+            "description": "Too many requests. Retry once the rate limit window resets.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12624,7 +12726,7 @@
             }
           },
           "429": {
-            "description": "",
+            "description": "Too many requests. Retry once the rate limit window resets.",
             "content": {
               "application/json": {
                 "schema": {
@@ -14456,11 +14558,8 @@
               }
             }
           },
-          "422": {
-            "$ref": "#/components/responses/ValidationException"
-          },
-          "404": {
-            "description": "The requested resource was not found.",
+          "429": {
+            "description": "Too many requests. Retry once the rate limit window resets.",
             "content": {
               "application/json": {
                 "schema": {
@@ -14468,17 +14567,25 @@
                   "properties": {
                     "message": {
                       "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {}
                     }
                   },
                   "required": [
-                    "message"
+                    "message",
+                    "errors"
                   ]
                 }
               }
             }
           },
-          "429": {
-            "description": "Too many requests. Retry once the rate limit window resets.",
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          },
+          "404": {
+            "description": "The requested resource was not found.",
             "content": {
               "application/json": {
                 "schema": {
@@ -14502,7 +14609,7 @@
     "/public/events/{eventId}/order/{orderShortId}": {
       "put": {
         "operationId": "public.completeOrderActionPublic",
-        "description": "`order.questions` and `products.*.questions` are validated against the questions configured\nfor the event. The `order.address` fields become required when the event's settings require\na billing address.",
+        "description": "`order.questions` and `products.*.questions` are validated against the questions configured\nfor the event. Every required question that is shown must be answered, so leaving out\n`order.questions` fails when the event has required order questions. The `order.address`\nfields become required when the event's settings require a billing address.",
         "summary": "Complete Order (public)",
         "tags": [
           "Orders / Public"
@@ -14644,7 +14751,7 @@
           {
             "name": "session_identifier",
             "in": "query",
-            "description": "Checkout session identifier issued when the order was created. Sets the checkout session cookie on the response.",
+            "description": "Checkout session identifier issued when the order was created, or a payment-link token. A checkout session identifier also sets the checkout session cookie on the response.",
             "schema": {
               "type": "string"
             }
@@ -14987,8 +15094,309 @@
               }
             }
           },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "errors"
+                  ]
+                }
+              }
+            }
+          },
           "404": {
             "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/public/events/{eventId}/order/{orderShortId}/payment-link": {
+      "post": {
+        "operationId": "public.createOrderPaymentLinkActionPublic",
+        "summary": "Create Order Payment Link (public)",
+        "tags": [
+          "Orders / Public"
+        ],
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "orderShortId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "`OrderResourcePublic`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/OrderResourcePublic"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "errors"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "errors"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "errors"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "description": "Error overview."
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests. Retry once the rate limit window resets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/public/events/{eventId}/order/{orderShortId}/report-offline-payment": {
+      "post": {
+        "operationId": "public.reportOfflinePaymentActionPublic",
+        "summary": "Report Offline Payment (public)",
+        "tags": [
+          "Orders / Public"
+        ],
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "orderShortId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportOfflinePaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "`OrderResourcePublic`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/OrderResourcePublic"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "errors"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "errors"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          },
+          "429": {
+            "description": "Too many requests. Retry once the rate limit window resets.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19845,7 +20253,7 @@
     "/organizers/{organizerId}/reports/{reportType}": {
       "get": {
         "operationId": "reports.getOrganizerReportAction",
-        "description": "The response rows depend on the requested `reportType`. Paginated report types return\n`{data, meta, links}`; non-paginated report types return `{data}`.",
+        "description": "The response rows depend on the requested `reportType`. Paginated report types return\n`{data, meta, links}`; non-paginated report types return `{data}`.\n\n`start_date` and `end_date` are widened to whole days in the organizer's timezone. Rows of\n`revenue_summary` are grouped by the UTC date of each order.",
         "summary": "Get Organizer Report",
         "tags": [
           "Reports"
@@ -20283,6 +20691,7 @@
     "/events/{eventId}/reports/{reportType}": {
       "get": {
         "operationId": "reports.getReportAction",
+        "description": "`start_date` and `end_date` are widened to whole days in the event's timezone. Rows of\n`daily_sales_report` are grouped by the UTC date of each order.",
         "summary": "Get Report",
         "tags": [
           "Reports"
@@ -27645,7 +28054,8 @@
               "sk",
               "el",
               "ko",
-              "ja"
+              "ja",
+              "cs"
             ]
           },
           "override_capacity": {
@@ -28290,6 +28700,13 @@
               "null"
             ],
             "maxLength": 255
+          },
+          "promo_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
           }
         },
         "required": [
@@ -28363,6 +28780,12 @@
             "type": "boolean"
           },
           "duplicate_occurrences": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "duplicate_email_templates": {
             "type": [
               "boolean",
               "null"
@@ -29667,6 +30090,18 @@
           "allow_orders_awaiting_offline_payment_to_check_in": {
             "type": "boolean"
           },
+          "offline_payment_reporting_enabled": {
+            "type": "boolean"
+          },
+          "offline_payment_order_reference_enabled": {
+            "type": "boolean"
+          },
+          "payment_links_enabled": {
+            "type": "boolean"
+          },
+          "payment_link_expiry_hours": {
+            "type": "integer"
+          },
           "enable_invoicing": {
             "type": "boolean",
             "description": "Invoice settings"
@@ -29818,6 +30253,10 @@
           "payment_providers",
           "offline_payment_instructions",
           "allow_orders_awaiting_offline_payment_to_check_in",
+          "offline_payment_reporting_enabled",
+          "offline_payment_order_reference_enabled",
+          "payment_links_enabled",
+          "payment_link_expiry_hours",
           "enable_invoicing",
           "invoice_label",
           "invoice_prefix",
@@ -30017,6 +30456,18 @@
           "allow_orders_awaiting_offline_payment_to_check_in": {
             "type": "boolean"
           },
+          "offline_payment_reporting_enabled": {
+            "type": "boolean"
+          },
+          "offline_payment_order_reference_enabled": {
+            "type": "boolean"
+          },
+          "payment_links_enabled": {
+            "type": "boolean"
+          },
+          "payment_link_expiry_hours": {
+            "type": "integer"
+          },
           "require_billing_address": {
             "type": "boolean",
             "description": "Invoice settings"
@@ -30124,6 +30575,10 @@
           "payment_providers",
           "offline_payment_instructions",
           "allow_orders_awaiting_offline_payment_to_check_in",
+          "offline_payment_reporting_enabled",
+          "offline_payment_order_reference_enabled",
+          "payment_links_enabled",
+          "payment_link_expiry_hours",
           "require_billing_address",
           "invoice_label",
           "show_marketing_opt_in",
@@ -31897,6 +32352,24 @@
               "null"
             ]
           },
+          "payment_link_created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "offline_payment_reported_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "offline_payment_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "promo_code": {
             "type": [
               "string",
@@ -31976,6 +32449,9 @@
           "address",
           "notes",
           "payment_provider",
+          "payment_link_created_at",
+          "offline_payment_reported_at",
+          "offline_payment_note",
           "promo_code",
           "event_id"
         ],
@@ -32071,6 +32547,27 @@
           },
           "is_payment_required": {
             "type": "boolean"
+          },
+          "payment_link_created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_payment_link_payer": {
+            "type": "boolean"
+          },
+          "offline_payment_reported_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payment_link_url": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "promo_code": {
             "type": [
@@ -32277,6 +32774,9 @@
           "email",
           "public_id",
           "is_payment_required",
+          "payment_link_created_at",
+          "is_payment_link_payer",
+          "offline_payment_reported_at",
           "promo_code",
           "taxes_and_fees_rollup"
         ],
@@ -33485,7 +33985,7 @@
                 "type"
               ]
             },
-            "maxItems": 40
+            "maxItems": 41
           },
           "seo_keywords": {
             "type": [
@@ -34977,6 +35477,33 @@
           "is_hidden": {
             "type": "boolean"
           },
+          "applies_to_all_tickets": {
+            "type": "boolean"
+          },
+          "condition_question_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "condition_values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "disqualifying_options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "disqualification_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "product_ids": {
             "type": "array",
             "items": {
@@ -34993,7 +35520,12 @@
           "required",
           "event_id",
           "belongs_to",
-          "is_hidden"
+          "is_hidden",
+          "applies_to_all_tickets",
+          "condition_question_id",
+          "condition_values",
+          "disqualifying_options",
+          "disqualification_message"
         ],
         "title": "QuestionResource"
       },
@@ -35047,6 +35579,30 @@
           "order": {
             "type": "integer"
           },
+          "condition_question_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "condition_values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "disqualifying_options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "disqualification_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "product_ids": {
             "type": "array",
             "items": {
@@ -35063,7 +35619,11 @@
           "required",
           "event_id",
           "belongs_to",
-          "order"
+          "order",
+          "condition_question_id",
+          "condition_values",
+          "disqualifying_options",
+          "disqualification_message"
         ],
         "title": "QuestionResourcePublic"
       },
@@ -35086,6 +35646,19 @@
           "cancel_order"
         ],
         "title": "RefundOrderRequest"
+      },
+      "ReportOfflinePaymentRequest": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          }
+        },
+        "title": "ReportOfflinePaymentRequest"
       },
       "ScheduleItemResource": {
         "type": "object",
@@ -36152,6 +36725,20 @@
           "allow_orders_awaiting_offline_payment_to_check_in": {
             "type": "boolean"
           },
+          "offline_payment_reporting_enabled": {
+            "type": "boolean"
+          },
+          "offline_payment_order_reference_enabled": {
+            "type": "boolean"
+          },
+          "payment_links_enabled": {
+            "type": "boolean"
+          },
+          "payment_link_expiry_hours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          },
           "enable_invoicing": {
             "type": "boolean",
             "description": "Invoice settings"
@@ -36350,6 +36937,19 @@
                   "Lora",
                   null
                 ]
+              },
+              "layout": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "MARQUEE",
+                  "FLYER",
+                  "STORY",
+                  "INVITE",
+                  null
+                ]
               }
             }
           },
@@ -36375,6 +36975,7 @@
                     "SCHEDULE",
                     "LOCATION",
                     "ORGANIZER",
+                    "MORE_EVENTS",
                     "TEXT",
                     "GALLERY",
                     "FAQ",
@@ -36482,7 +37083,7 @@
                 "type"
               ]
             },
-            "maxItems": 40
+            "maxItems": 41
           },
           "allow_attendee_self_edit": {
             "type": "boolean",
@@ -36526,6 +37127,22 @@
           "status"
         ],
         "title": "UpdateEventStatusRequest"
+      },
+      "UpdateEventTypeRequest": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "SINGLE",
+              "RECURRING"
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "UpdateEventTypeRequest"
       },
       "UpdateLineupEntryRequest": {
         "type": "object",
@@ -37044,6 +37661,7 @@
                   "el",
                   "ko",
                   "ja",
+                  "cs",
                   null
                 ]
               },
@@ -37683,6 +38301,7 @@
                   "el",
                   "ko",
                   "ja",
+                  "cs",
                   null
                 ]
               },
@@ -38169,6 +38788,66 @@
             "items": {
               "type": "string"
             }
+          },
+          "applies_to_all_tickets": {
+            "type": "boolean"
+          },
+          "condition_question_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "condition_values": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          },
+          "disqualifying_options": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          },
+          "disqualification_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "option_renames": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "to": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ]
+            },
+            "maxItems": 200
           },
           "belongs_to": {
             "type": "string",

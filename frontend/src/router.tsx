@@ -85,6 +85,13 @@ export const router: RouteObject[] = [
         ]
     },
     {
+        path: "connect",
+        async lazy() {
+            const Connect = await import("./components/routes/oauth/Connect");
+            return { Component: Connect.default };
+        }
+    },
+    {
         path: "sso/callback",
         async lazy() {
             const SsoCallback = await import("./components/routes/sso/Callback");
@@ -343,6 +350,13 @@ export const router: RouteObject[] = [
                 async lazy() {
                     const ApiReference = await import("./components/routes/settings/ApiReference");
                     return { Component: ApiReference.default };
+                }
+            },
+            {
+                path: "billing",
+                async lazy() {
+                    const Billing = await import("./components/routes/settings/Billing");
+                    return { Component: Billing.default };
                 }
             },
             {
@@ -685,6 +699,7 @@ export const router: RouteObject[] = [
     {
         path: "/events/:organizerId/:organizerSlug",
         loader: publicOrganizerRouteLoader,
+        handle: {styles: "src/components/layouts/PublicOrganizer/index.tsx"},
         async lazy() {
             const PublicOrganizer = await import("./components/layouts/PublicOrganizer");
             return { Component: PublicOrganizer.default };
@@ -694,6 +709,7 @@ export const router: RouteObject[] = [
     {
         path: "/events/:organizerId/:organizerSlug/past-events",
         loader: publicOrganizerRouteLoader,
+        handle: {styles: "src/components/layouts/PublicOrganizer/index.tsx"},
         async lazy() {
             const PublicOrganizer = await import("./components/layouts/PublicOrganizer");
             return { Component: PublicOrganizer.default };
@@ -702,6 +718,7 @@ export const router: RouteObject[] = [
     },
     {
         path: "/e/:eventId/:eventSlug",
+        handle: {styles: "src/components/layouts/EventHomepage/index.tsx"},
         async lazy() {
             const EventHomepage = await import("./components/layouts/EventHomepage");
             return { Component: EventHomepage.default };
@@ -726,6 +743,7 @@ export const router: RouteObject[] = [
     {
         path: "/event/:eventId/:eventSlug",
         loader: publicEventRouteLoader,
+        handle: {styles: "src/components/layouts/PublicEvent/index.tsx"},
         async lazy() {
             const PublicEvent = await import("./components/layouts/PublicEvent");
             return { Component: PublicEvent.default };

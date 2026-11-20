@@ -1,6 +1,6 @@
-import {Button, ComboboxItem, Group, Select, Skeleton, Table as MantineTable} from '@mantine/core';
+import {Button, Group, Select, Skeleton, Table as MantineTable} from '@mantine/core';
 import {t} from '@lingui/macro';
-import {DatePickerInput} from "@mantine/dates";
+import {DatePickerInput, DatesRangeValue} from "@mantine/dates";
 import {IconArrowDown, IconArrowsSort, IconArrowUp, IconCalendar} from "@tabler/icons-react";
 import React, {useMemo, useState} from "react";
 import {PageTitle} from "../PageTitle";
@@ -13,6 +13,7 @@ import {Event, EventType, IdParam} from "../../../types.ts";
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import {instantRangeToWallDates, wallDateInTimezone, wallDateRangeToInstants} from "../../../utilites/dates.ts";
 import {NoResultsSplash} from "../NoResultsSplash";
 import {OccurrenceSelect} from "../OccurrenceSelect";
 import {useGetAllEventOccurrences} from "../../../queries/useGetAllEventOccurrences.ts";
@@ -133,7 +134,7 @@ const ReportTable = <T extends Record<string, any>>({
         return [start.toDate(), end.toDate()];
     };
 
-    const handlePeriodChange = (value: string | null, _: ComboboxItem) => {
+    const handlePeriodChange = (value: string | null) => {
         if (!value) return;
         setSelectedPeriod(value);
         const newRange = calculateDateRange(value);
@@ -141,15 +142,8 @@ const ReportTable = <T extends Record<string, any>>({
         onDateRangeChange?.(newRange);
     };
 
-    const handleDateRangeChange = (newRange: [Date | null, Date | null]) => {
-        const [start, end] = newRange;
-        const tzStart = start ? dayjs(start).tz(event.timezone) : null;
-        const tzEnd = end ? dayjs(end).tz(event.timezone) : null;
-
-        const tzRange: [Date | null, Date | null] = [
-            tzStart?.toDate() || null,
-            tzEnd?.toDate() || null
-        ];
+    const handleDateRangeChange = (newRange: DatesRangeValue<string>) => {
+        const tzRange = wallDateRangeToInstants(newRange, event.timezone);
 
         setDateRange(tzRange);
         onDateRangeChange?.(tzRange);
@@ -298,6 +292,7 @@ const ReportTable = <T extends Record<string, any>>({
                             leftSection={<IconCalendar stroke={1.5} size={20}/>}
                             mb="0"
                             className={classes.periodSelect}
+                            data-testid="report-period-select"
                         />
                     )}
                     {showDateFilter && showDatePickerInput && (
@@ -306,11 +301,12 @@ const ReportTable = <T extends Record<string, any>>({
                             leftSection={<IconCalendar stroke={1.5} size={20}/>}
                             type="range"
                             placeholder="Pick dates range"
-                            value={dateRange}
+                            value={instantRangeToWallDates(dateRange, event.timezone)}
                             onChange={handleDateRangeChange}
-                            minDate={dayjs().subtract(1, 'year').tz(event.timezone).toDate()}
-                            maxDate={dayjs().tz(event.timezone).toDate()}
+                            minDate={wallDateInTimezone(dayjs().subtract(1, 'year').toDate(), event.timezone)}
+                            maxDate={wallDateInTimezone(new Date(), event.timezone)}
                             className={classes.datePicker}
+                            data-testid="report-date-range-picker"
                         />
                     )}
                     {enableDownload && (

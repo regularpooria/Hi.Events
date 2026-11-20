@@ -87,6 +87,7 @@ Integrations call the API with API keys, so endpoints in the `auth:api,sanctum` 
 ## Frontend
 
 - SSR app: guard `window`/`document`, and keep per-request state in `AsyncLocalStorage` (`utilites/ssrRequestContext.ts`), never in axios defaults or module globals.
+- Public routes set `handle: {styles: '<module path>'}` in `router.tsx` so production SSR links their CSS in `<head>` and skips the white `ssr-loader` overlay; without it the page paints unstyled and shifts (CLS) on hydration.
 - React Query for all API calls (patterns: `queries/useGetCapacityAssignment.ts`, `mutations/useCreateAffiliate.ts`).
 - Mantine components; SCSS modules for layout. Reuse existing components before adding new ones, and skip unnecessary React imports.
 - Notifications via `showSuccess`/`showError` (`utilites/notifications.tsx`), never Mantine's `showNotification`; validation errors via `useFormErrorResponseHandler`. Handle errors in parent components.
@@ -104,6 +105,8 @@ Feature rules live in `.claude/rules/`; Claude Code loads each file automaticall
 | Two-factor authentication | `.claude/rules/backend/two-factor.md` |
 | Single sign-on (OIDC) | `.claude/rules/backend/sso.md` |
 | API keys | `.claude/rules/backend/api-keys.md` |
+| MCP server | `.claude/rules/backend/mcp.md` |
+| OAuth (MCP sign-in) | `.claude/rules/backend/oauth.md` |
 | Abuse & spam | `.claude/rules/backend/abuse-and-spam.md` |
 | Account deletion | `.claude/rules/backend/account-deletion.md` |
 | OpenAPI docs | `.claude/rules/backend/openapi.md` |
@@ -114,6 +117,7 @@ Feature rules live in `.claude/rules/`; Claude Code loads each file automaticall
 | Lineup & schedule | `.claude/rules/features/lineup.md` |
 | Homepage sections | `.claude/rules/features/homepage-sections.md` |
 | Embeddable widget | `.claude/rules/features/widget.md` |
+| Registration questions | `.claude/rules/features/questions.md` |
 | Frontend UI patterns | `.claude/rules/frontend/ui.md` |
 | E2E specs | `.claude/rules/e2e.md` |
 

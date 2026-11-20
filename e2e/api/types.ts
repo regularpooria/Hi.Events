@@ -87,6 +87,7 @@ export interface CreateEventPayload {
   organizer_id: number;
   start_date: string;
   end_date?: string;
+  description?: string;
   category: string;
   currency?: string;
   timezone?: string;
@@ -116,6 +117,7 @@ export interface CreateProductPayload {
   show_quantity_remaining?: boolean;
   waitlist_enabled?: boolean;
   hide_when_sold_out?: boolean;
+  start_collapsed?: boolean;
   sale_start_date?: string;
   sale_end_date?: string;
   sequential_tier_release_enabled?: boolean;
@@ -276,6 +278,10 @@ export interface CreateQuestionPayload {
   required: boolean;
   is_hidden: boolean;
   description?: string;
+  condition_question_id?: number;
+  condition_values?: string[];
+  disqualifying_options?: string[];
+  disqualification_message?: string;
 }
 
 export interface CreateTaxOrFeePayload {

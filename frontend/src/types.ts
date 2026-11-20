@@ -76,12 +76,15 @@ export interface ColorTheme {
     homepage_secondary_text_color: string;
 }
 
+export type EventLayout = 'MARQUEE' | 'FLYER' | 'STORY' | 'INVITE';
+
 export interface HomepageThemeSettings {
     accent: string;
     background: string;
     mode: 'light' | 'dark';
     background_type: 'COLOR' | 'MIRROR_COVER_IMAGE';
     font_family?: string;
+    layout?: EventLayout;
 }
 
 export interface LoginResponse {
@@ -338,6 +341,34 @@ export interface CreateApiKeyRequest extends IdentityConfirmation {
     expires_in_days: number | null;
 }
 
+export interface OAuthConsent {
+    request_id: string;
+    client_name: string;
+    redirect_host: string;
+    is_verified: boolean;
+    is_local: boolean;
+    requested_access: ApiKeyAccess;
+    account_name: string;
+}
+
+export interface ApproveOAuthRequest extends IdentityConfirmation {
+    access: ApiKeyAccess;
+}
+
+export interface OAuthRedirect {
+    redirect_url: string;
+}
+
+export interface OAuthConnection {
+    id: IdParam;
+    app_name: string | null;
+    redirect_host: string | null;
+    is_verified: boolean;
+    access: ApiKeyAccess;
+    last_used_at: string | null;
+    created_at: string;
+}
+
 export interface TwoFactorStatus {
     enabled: boolean;
     confirmed_at: string | null;
@@ -463,6 +494,33 @@ export interface Account {
     deletion_request?: AccountDeletionRequest | null;
 }
 
+export type AccountSubscriptionStatus =
+    'INCOMPLETE'
+    | 'INCOMPLETE_EXPIRED'
+    | 'TRIALING'
+    | 'ACTIVE'
+    | 'PAST_DUE'
+    | 'CANCELED'
+    | 'UNPAID'
+    | 'PAUSED';
+
+export type SubscriptionBillingInterval = 'month' | 'year';
+
+export interface SubscriptionPrice {
+    interval: SubscriptionBillingInterval;
+    unit_amount: number;
+    currency: string;
+}
+
+export interface AccountSubscription {
+    available: boolean;
+    active: boolean;
+    status: AccountSubscriptionStatus | null;
+    current_period_end: string | null;
+    cancel_at_period_end: boolean;
+    prices: SubscriptionPrice[];
+}
+
 export interface AccountDeletionRequest {
     id: IdParam;
     status: 'REQUESTED' | 'CANCELLED' | 'COMPLETED';
@@ -569,6 +627,7 @@ export type HomepageSectionType =
     | 'SCHEDULE'
     | 'LOCATION'
     | 'ORGANIZER'
+    | 'MORE_EVENTS'
     | 'EVENTS'
     | 'CONTACT'
     | 'PAST_EVENTS'
@@ -636,6 +695,10 @@ export interface EventSettings {
     offline_payment_instructions: string;
     payment_providers: PaymentProvider[];
     allow_orders_awaiting_offline_payment_to_check_in: boolean;
+    offline_payment_reporting_enabled: boolean;
+    offline_payment_order_reference_enabled: boolean;
+    payment_links_enabled: boolean;
+    payment_link_expiry_hours: number;
 
     // Invoice settings
     enable_invoicing: boolean;
@@ -756,6 +819,7 @@ export interface EventDuplicatePayload extends EventBase {
     duplicate_affiliates: boolean;
     duplicate_lineup: boolean;
     duplicate_occurrences?: boolean;
+    duplicate_email_templates?: boolean;
 }
 
 export enum EventStatus {
@@ -1064,6 +1128,7 @@ export interface Organizer {
     location_id?: IdParam | null;
     location?: Location | null;
     status?: OrganizerStatus;
+    branding_removed?: boolean;
     stripe_connect_setup_complete?: boolean;
     stripe_account_id?: string | null;
     configuration?: AccountConfiguration;
@@ -1408,6 +1473,11 @@ export interface Order {
     event?: Event;
     latest_invoice?: Invoice;
     session_identifier?: string;
+    payment_link_created_at?: string | null;
+    payment_link_url?: string;
+    is_payment_link_payer?: boolean;
+    offline_payment_reported_at?: string | null;
+    offline_payment_note?: string | null;
 }
 
 export interface Invoice {
@@ -1449,6 +1519,11 @@ export interface Question {
     event_id?: number;
     products?: Product[];
     product_ids?: number[];
+    applies_to_all_tickets?: boolean;
+    condition_question_id?: number | null;
+    condition_values?: string[];
+    disqualifying_options?: string[];
+    disqualification_message?: string | null;
     belongs_to: string;
     is_hidden: boolean;
 }
@@ -1765,6 +1840,12 @@ export interface QuestionRequestData {
     type: string;
     options: string[];
     product_ids?: string[];
+    applies_to_all_tickets?: boolean;
+    condition_question_id?: string | number | null;
+    condition_values?: string[];
+    disqualifying_options?: string[];
+    disqualification_message?: string;
+    option_renames?: { from: string; to: string }[];
     belongs_to: string;
 }
 
@@ -1805,7 +1886,9 @@ export enum QuestionType {
     CHECKBOX = 'CHECKBOX',
     RADIO = 'RADIO',
     DROPDOWN = 'DROPDOWN',
+    MULTI_SELECT_DROPDOWN = 'MULTI_SELECT_DROPDOWN',
     DATE = 'DATE',
+    PHONE = 'PHONE',
 }
 
 export enum QuestionBelongsToType {
@@ -2106,6 +2189,7 @@ export interface JoinWaitlistRequest {
     first_name: string;
     last_name?: string;
     locale?: string;
+    promo_code?: string;
 }
 
 export interface WaitlistProductStats {
